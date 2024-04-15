@@ -41,7 +41,7 @@ def send_distance():
 
         if distance < 5:
             neopixel = 1
-        elif distance > 5:
+        elif distance > 5 and < 10:
             neopixel = 2
         else:
             neopixel = 3
@@ -49,9 +49,7 @@ def send_distance():
         message = str(neopixel).encode('ascii')
 
         received_data = data.read(data.in_waiting).decode('ascii')
-        #print(f"Received data: {received_data}")
 
-        # Put received data into the queue
         received_data_queue.put(received_data)
 
         data.write(message)

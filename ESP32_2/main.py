@@ -1,22 +1,16 @@
 import network
 import espnow
 from machine import Pin, PWM
-from utime import sleep
-from time import sleep, localtime, time
-from utime import sleep_ms, ticks_ms, ticks_diff
+from utime import sleep, ticks_ms, ticks_diff
 from battery_percentage import get_battery_percentage
 
 led = Pin(26, Pin.OUT)
-
-
 pwm = PWM(led)
-
-#
-pwm.freq(1000) #FUCK GITHUB
+pwm.freq(1000)  
 
 def pulse_led(pwm, duration=2, max_duty=1023):
-    step_time = 0.01  # Time between duty cycle steps (10ms)
-    steps = int(duration / step_time / 2)  # Calculate the number of steps for fading in/out
+    step_time = 0.01
+    steps = int(duration / step_time / 2)
 
     # Gradually increase brightness
     for duty in range(0, max_duty, max_duty // steps):
@@ -28,54 +22,37 @@ def pulse_led(pwm, duration=2, max_duty=1023):
         pwm.duty(duty)
         sleep(step_time)
 
-    # Introduce a brief off period before the next pulse starts, adjust this to decrease the off time
-    sleep(10)  # Off time between pulses, decrease this value to reduce off time
+    # Return PWM to initial state (LED off)
+    pwm.duty(0)
+    sleep(30)  # Keep LED off for 30 seconds before next pulse
+ 
 
-IR_Sensor = Pin(16, Pin.IN, Pin.PULL_DOWN)
-SPEAKER_PIN = 17
+motion = False
 
-speaker = PWM(Pin(SPEAKER_PIN))
+def handle_interrupt(pin):
+    global motion
+    motion = True
 
-pb1 = Pin(4, Pin.IN)
-pb2 = Pin(0, Pin.IN)
+pir = Pin(16, Pin.IN)
+pir.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
 
-IN1 = Pin(21,Pin.OUT)
-IN2 = Pin(22,Pin.OUT)
-IN3 = Pin(32,Pin.OUT)
-IN4 = Pin(33,Pin.OUT)
+IN1 = Pin(21, Pin.OUT)
+IN2 = Pin(22, Pin.OUT)
+IN3 = Pin(32, Pin.OUT)
+IN4 = Pin(33, Pin.OUT)
 
 pins = [IN1, IN2, IN3, IN4]
 
-sequence = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
-sequence1 = [[0,0,0,1],[0,0,1,0],[0,1,0,0],[1,0,0,0]]
+sequence = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+sequence1 = [[0, 0, 0, 1], [0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]]
 
-# A WLAN interface must be active to send()/recv()
-station = network.WLAN(network.STA_IF) # Or network.AP_IF
+station = network.WLAN(network.STA_IF) 
 station.active(True)
 
 esp_now = espnow.ESPNow()
 esp_now.active(True)
-peer = b'\xB0\xA7\x32\xDD\x70\x08'  # MAC address of peer's wifi interface
-esp_now.add_peer(peer)   # Must add_peer() before send()
-
-def sound_off():
-   speaker.duty_u16(0)
-
-def IRsen_tone():
-   speaker.duty_u16(1000)
-   speaker.freq(300)
-   sleep(.5) 
-   sound_off()
-
-def forward_tone():
-   speaker.duty_u16(1000)
-   speaker.freq(400)
-   sleep(.1)
-   speaker.freq(900)
-   sleep(.1)
-   speaker.freq(1200)
-   sleep(.1)
-   sound_off()
+peer = b'\xB0\xA7\x32\xDD\x70\x08'  
+esp_now.add_peer(peer)
 
 def open_lit():
     start_time = ticks_ms()  
@@ -93,29 +70,27 @@ def close_lit():
                 pins[i].value(step[i])
                 sleep(0.001)
 
-def ir_open():
+def pir_open():
+    global motion
     count = 0
-    driver_state = 0
-    battery_percentage = get_battery_percentage()
     while True:
-        if IR_Sensor.value() == 0:
+        pulse_led(pwm, duration=2, max_duty=1023)
+        if motion:
             print("ON")
-            IRsen_tone()
-            driver_state = 2
             open_lit()
             close_lit()
             count += 1
             print(f"Antal gange åbnet: {count}")
+            battery_percentage = get_battery_percentage()
             string_to_send = f"8c {count} {battery_percentage}"
-            
-            esp_now.send(peer, string_to_send) 
+            esp_now.send(peer, string_to_send)  
             print(string_to_send)
+            sleep(5)
             
-        if IR_Sensor.value():
-            print("Forward!")
-            driver_state = 1
-        pulse_led(pwm, duration=10) 
-        sleep(1)
+            print("OFF")
+            motion = False  
+
     return count
+
         
-ir_open()
+pir_open()
